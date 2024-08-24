@@ -1,0 +1,11 @@
+function/package/*
+function/python/*
+aws/.terraform/*
+azure/.terraform/*
+.terraform
+*.zip
+layer/*
+aws/terraform.tfstate.backup
+azure/terraform.tfstate.backup
+azure/terraform.tfstate
+aws/terraform.tfstate
