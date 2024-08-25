@@ -5,6 +5,35 @@ import openai
 import requests
 import json
 
+def pii_recognition_api(language_key, language_endpoint, text):
+    url = f"{language_endpoint}/language/:analyze-text?api-version=2022-05-01"
+    headers = {
+        "Content-Type": "application/json",
+        "Ocp-Apim-Subscription-Key": language_key
+    }
+    payload = {
+        "kind": "PiiEntityRecognition",
+        "parameters": {
+            "modelVersion": "latest"
+        },
+        "analysisInput": {
+            "documents": [
+                {
+                    "id": "1",
+                    "language": "en",
+                    "text": text
+                }
+            ]
+        }
+    }
+    
+    response = requests.post(url, headers=headers, json=payload)
+    response.raise_for_status()
+    result = response.json()
+    
+    if result.get("results", {}).get("documents"):
+        return result["results"]["documents"][0]["redactedText"]
+    return text
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
@@ -18,12 +47,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     if not query:
         return func.HttpResponse("No query provided", status_code=400)
 
-    # Check for API keys in request body, fallback to environment variables
+    # Check for API keys and endpoints in request body, fallback to environment variables
     openai_api_key = req_body.get('openai_api_key') or os.getenv("OPENAI_API_KEY")
     azure_search_key = req_body.get('azure_search_key') or os.getenv("AZURE_SEARCH_KEY")
+    language_key = req_body.get('language_key') or os.getenv("LANGUAGE_KEY")
+    language_endpoint = req_body.get('language_endpoint') or os.getenv("LANGUAGE_ENDPOINT")
 
     if not openai_api_key:
         return func.HttpResponse("OpenAI API key not provided", status_code=400)
+    if not azure_search_key:
+        return func.HttpResponse("Azure Search key not provided", status_code=400)
+    if not language_key or not language_endpoint:
+        return func.HttpResponse("Language service key or endpoint not provided", status_code=400)
 
     # Set up Azure OpenAI
     openai.api_type = "azure"
@@ -56,13 +91,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         context = "\n".join([doc['content'] for doc in search_results.get('value', [])])
         print("got context ", context)
 
+
+        redacted_text = pii_recognition_api(language_key, language_endpoint, context)
+
+        print(f"redacted text {redacted_text}")
+
         # Prepare prompt for GPT-4o-mini
         prompt = f"Based on the following context, answer the query: '{query}'\n\nContext:\n{context}"
 
         # Call Azure OpenAI API
         try:
             response = openai.ChatCompletion.create(
-                engine="gpt-4o-mini",
+                engine="Phi-3.5-mini-instruct",
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant. Use the provided context to answer the user's query."},
                     {"role": "user", "content": prompt}
@@ -70,6 +110,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 max_tokens=150
             )
             generated_text = response.choices[0].message['content'].strip()
+
+            # PII Recognition using REST API
+            redacted_text = pii_recognition_api(language_key, language_endpoint, generated_text)
+
+            return func.HttpResponse(f"Query: {query}\n\nResponse: {redacted_text}")
+
         except openai.error.AuthenticationError as e:
             logging.error(f"OpenAI API Authentication Error: {str(e)}")
             return func.HttpResponse(
@@ -83,12 +129,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
                 status_code=500
             )
 
-        return func.HttpResponse(f"Query: {query}\n\nResponse: {generated_text}")
-
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error calling Azure Search API: {str(e)}")
+        logging.error(f"Error calling API: {str(e)}")
         return func.HttpResponse(
-            f"An error occurred while searching: {str(e)}",
+            f"An error occurred while calling an API: {str(e)}",
             status_code=500
         )
     except Exception as e:

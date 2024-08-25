@@ -10,6 +10,9 @@ terraform {
     }
   }
 }
+variable "language_service_name" {
+  default = "saurabh-launguage-service"
+}
 
 provider "azurerm" {
   features {}
@@ -90,6 +93,7 @@ resource "azurerm_cognitive_deployment" "gpt4o_mini" {
   }
   scale {
     type = "Standard"
+    capacity = 8
   }
 }
 
@@ -239,7 +243,12 @@ resource "null_resource" "search_indexer" {
   depends_on = [null_resource.search_index]
 }
 
-# Create a Function App
+data "azurerm_cognitive_account" "language" {
+  name                = var.language_service_name
+  resource_group_name = azurerm_resource_group.rg.name
+}
+
+
 # Create a Function App
 resource "azurerm_linux_function_app" "fa" {
   name                       = "my-function-saurabh-linux"
@@ -275,6 +284,9 @@ resource "azurerm_linux_function_app" "fa" {
     AZURE_SEARCH_SERVICE = azurerm_search_service.search.name
     AZURE_SEARCH_KEY     = azurerm_search_service.search.primary_key
     AZURE_SEARCH_INDEX   = "my-search-index"
+
+    LANGUAGE_KEY      = data.azurerm_cognitive_account.language.primary_access_key
+    LANGUAGE_ENDPOINT = data.azurerm_cognitive_account.language.endpoint
   }
 }
 
@@ -361,4 +373,14 @@ output "ai_search_primary_key" {
 output "azure_search_primary_key" {
   value     = azurerm_search_service.search.primary_key
   sensitive = true
+}
+
+# Add these to your outputs
+output "language_key" {
+  value     = data.azurerm_cognitive_account.language.primary_access_key
+  sensitive = true
+}
+
+output "language_endpoint" {
+  value = data.azurerm_cognitive_account.language.endpoint
 }
