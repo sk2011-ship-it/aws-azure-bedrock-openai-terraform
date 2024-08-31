@@ -125,15 +125,17 @@ resource "azurerm_search_service" "search" {
 resource "null_resource" "search_datasource" {
   triggers = {
     search_service_name = azurerm_search_service.search.name
+    storage_account_name = azurerm_storage_account.search_data.name
+    container_name = azurerm_storage_container.search_data.name
   }
 
   provisioner "local-exec" {
     command = <<EOT
       echo "Creating search datasource"
-      API_KEY=${azurerm_search_service.search.primary_key} \
-      CONN_STRING=$(az storage account show-connection-string --name ${azurerm_storage_account.search_data.name} --resource-group ${azurerm_resource_group.rg.name} --query connectionString --output tsv) \
-      curl -X POST \
-        "https://${self.triggers.search_service_name}.search.windows.net/datasources?api-version=2021-04-30-Preview" \
+      API_KEY=$(az search admin-key show --resource-group ${azurerm_resource_group.rg.name} --service-name ${azurerm_search_service.search.name} --query primaryKey -o tsv)
+      CONN_STRING=$(az storage account show-connection-string --name ${azurerm_storage_account.search_data.name} --resource-group ${azurerm_resource_group.rg.name} --query connectionString -o tsv)
+      RESPONSE=$(curl -X POST \
+        "https://${azurerm_search_service.search.name}.search.windows.net/datasources?api-version=2021-04-30-Preview" \
         -H "Content-Type: application/json" \
         -H "api-key: $API_KEY" \
         -d '{
@@ -145,18 +147,12 @@ resource "null_resource" "search_datasource" {
           "container": {
             "name": "${azurerm_storage_container.search_data.name}"
           }
-        }'
-    EOT
-  }
-
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<EOT
-      echo "Deleting search datasource"
-      API_KEY=${self.triggers.search_service_key} \
-      curl -X DELETE \
-        "https://${self.triggers.search_service_name}.search.windows.net/datasources/my-search-datasource?api-version=2021-04-30-Preview" \
-        -H "api-key: $API_KEY"
+        }')
+      echo $RESPONSE
+      if [[ $RESPONSE == *"error"* ]]; then
+        echo "Error creating datasource"
+        exit 1
+      fi
     EOT
   }
 }
@@ -165,14 +161,15 @@ resource "null_resource" "search_datasource" {
 resource "null_resource" "search_index" {
   triggers = {
     search_service_name = azurerm_search_service.search.name
+    datasource_creation = null_resource.search_datasource.id
   }
 
   provisioner "local-exec" {
     command = <<EOT
       echo "Creating search index"
-      API_KEY=${azurerm_search_service.search.primary_key} \
-      curl -X POST \
-        "https://${self.triggers.search_service_name}.search.windows.net/indexes?api-version=2021-04-30-Preview" \
+      API_KEY=$(az search admin-key show --resource-group ${azurerm_resource_group.rg.name} --service-name ${azurerm_search_service.search.name} --query primaryKey -o tsv)
+      RESPONSE=$(curl -X POST \
+        "https://${azurerm_search_service.search.name}.search.windows.net/indexes?api-version=2021-04-30-Preview" \
         -H "Content-Type: application/json" \
         -H "api-key: $API_KEY" \
         -d '{
@@ -181,18 +178,12 @@ resource "null_resource" "search_index" {
             {"name": "id", "type": "Edm.String", "key": true, "searchable": true, "filterable": true, "sortable": true, "facetable": false},
             {"name": "content", "type": "Edm.String", "searchable": true, "filterable": false, "sortable": false, "facetable": false}
           ]
-        }'
-    EOT
-  }
-
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<EOT
-      echo "Deleting search index"
-      API_KEY=${self.triggers.search_service_key} \
-      curl -X DELETE \
-        "https://${self.triggers.search_service_name}.search.windows.net/indexes/my-search-index?api-version=2021-04-30-Preview" \
-        -H "api-key: $API_KEY"
+        }')
+      echo $RESPONSE
+      if [[ $RESPONSE == *"error"* ]]; then
+        echo "Error creating index"
+        exit 1
+      fi
     EOT
   }
 
@@ -203,14 +194,15 @@ resource "null_resource" "search_index" {
 resource "null_resource" "search_indexer" {
   triggers = {
     search_service_name = azurerm_search_service.search.name
+    index_creation = null_resource.search_index.id
   }
 
   provisioner "local-exec" {
     command = <<EOT
       echo "Creating search indexer"
-      API_KEY=${azurerm_search_service.search.primary_key} \
-      curl -X POST \
-        "https://${self.triggers.search_service_name}.search.windows.net/indexers?api-version=2021-04-30-Preview" \
+      API_KEY=$(az search admin-key show --resource-group ${azurerm_resource_group.rg.name} --service-name ${azurerm_search_service.search.name} --query primaryKey -o tsv)
+      RESPONSE=$(curl -X POST \
+        "https://${azurerm_search_service.search.name}.search.windows.net/indexers?api-version=2021-04-30-Preview" \
         -H "Content-Type: application/json" \
         -H "api-key: $API_KEY" \
         -d '{
@@ -225,18 +217,12 @@ resource "null_resource" "search_indexer" {
             "maxFailedItems": 10,
             "maxFailedItemsPerBatch": 5
           }
-        }'
-    EOT
-  }
-
-  provisioner "local-exec" {
-    when    = destroy
-    command = <<EOT
-      echo "Deleting search indexer"
-      API_KEY=${self.triggers.search_service_key} \
-      curl -X DELETE \
-        "https://${self.triggers.search_service_name}.search.windows.net/indexers/my-search-indexer?api-version=2021-04-30-Preview" \
-        -H "api-key: $API_KEY"
+        }')
+      echo $RESPONSE
+      if [[ $RESPONSE == *"error"* ]]; then
+        echo "Error creating indexer"
+        exit 1
+      fi
     EOT
   }
 
