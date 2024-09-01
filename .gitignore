@@ -9,3 +9,12 @@ aws/terraform.tfstate.backup
 azure/terraform.tfstate.backup
 azure/terraform.tfstate
 aws/terraform.tfstate
+.terraform.lock.hcl
+azure/.terraform.lock.hcl*
+aws/.terraform.lock.hcl*
+aws/terraform.tfstate
+azure/terraform.tfstate
+temp_auto_push.bat
+temp_interactive_push.bat
+.gitignore
+branch_structure.json
