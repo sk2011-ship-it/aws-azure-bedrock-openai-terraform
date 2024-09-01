@@ -5,6 +5,7 @@ import openai
 import requests
 import json
 
+
 def pii_recognition_api(language_key, language_endpoint, text):
     url = f"{language_endpoint}/language/:analyze-text?api-version=2022-05-01"
     headers = {
@@ -26,14 +27,15 @@ def pii_recognition_api(language_key, language_endpoint, text):
             ]
         }
     }
-    
+
     response = requests.post(url, headers=headers, json=payload)
     response.raise_for_status()
     result = response.json()
-    
+
     if result.get("results", {}).get("documents"):
         return result["results"]["documents"][0]["redactedText"]
     return text
+
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
@@ -90,7 +92,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Extract content from search results
         context = "\n".join([doc['content'] for doc in search_results.get('value', [])])
         print("got context ", context)
-
 
         redacted_text = pii_recognition_api(language_key, language_endpoint, context)
 
